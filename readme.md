@@ -28,4 +28,12 @@ El simulador integra tres marcos teóricos principales de la literatura reciente
 3. Presionar `go` para iniciar el reloj temporal ($\Delta t = 1$ día).
 4. La interfaz pintará de rojo los parches donde la prevalencia de la infección humana supere el 5%, permitiendo visualizar la onda expansiva concéntrica del brote epidémico en la matriz.
 
-*(En desarrollo: Módulos de intervención espacial para evaluación de fumigación en anillos concéntricos vs. barreras lineales estratégicas).*
+## Bitácora de Simulación y Comportamientos Emergentes
+
+Durante las pruebas en la topología de grilla abstracta, se implementaron las siguientes mejoras y se registraron los siguientes fenómenos:
+
+1. **Topología Finita:** Se desactivó la topología de toroide ("world wrap") para confinar la simulación a un plano con límites definidos, evitando fugas dimensionales del patógeno.
+2. **Estocasticidad Inicial:** El paciente cero se ubica de forma aleatoria en la matriz, permitiendo evaluar el efecto de "succión" gravitacional desde la periferia hacia el nodo céntrico.
+3. **Movilidad Bidireccional:** El modelo permite el viaje de humanos susceptibles (S) e infectados (I), simulando el contagio en el destino (ida) y el transporte del virus hacia los barrios residenciales (retorno).
+4. **Automatización:** Se integró un disparador que despliega intervenciones de fumigación al superar un umbral crítico de prevalencia (ej. 200 casos), simulando la latencia de respuesta sanitaria.
+5. **Efecto Puente (Fuga Espacial):** Las simulaciones con "anillos preventivos amplios" demostraron que la fumigación aislada es ineficaz si se mantiene la movilidad. Los individuos que residen dentro de la barrera química actúan como vectores de relevo: viajan a la zona infectada, contraen el virus y lo exportan cruzando la zona tratada hacia parches susceptibles.

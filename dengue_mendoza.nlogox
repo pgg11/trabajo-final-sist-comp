@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <model version="NetLogo 7.0.4" snapToGrid="true">
   <code><![CDATA[globals [
-  ;; Variables climáticas (Enet et al.)
   temperatura
   precipitacion
-  
-  ;; Paso de tiempo (Gutierrez et al.)
   dt
+  fumigado?   ;; NUEVO: Control para que la fumigación ocurra una sola vez
 ]
 
 patches-own [
@@ -26,6 +24,7 @@ patches-own [
 
 to setup
   clear-all
+  set fumigado? false   ;; Reiniciamos el control de fumigación
   
   ;; 1. Configurar el escenario climático (El Niño según Enet)
   set temperatura 25    ;; Temperatura óptima constante (entre 20 y 30 grados)
@@ -59,12 +58,11 @@ to setup
     set pcolor scale-color blue atractivo 0 100
   ]
   
-  ;; 3. Inyectar el paciente cero (el caso importado que menciona tu problema)
-  ;; Le decimos al parche del centro (0,0) que tenga 1 humano infectado
-  ask patch 0 0 [
+  ;; 3. PACIENTE CERO ALEATORIO: Selecciona un parche al azar en toda la ciudad
+  ask one-of patches [
     set hum-I 1
     set hum-S 99
-    set pcolor red      ;; Pintamos el foco inicial de rojo para verlo
+    set pcolor red      
   ]
   
   reset-ticks
@@ -81,6 +79,14 @@ to go
   
   ;; Ejecutamos los viajes de la población
   movilidad-humana
+  
+  ;; AUTOMATIZACIÓN DE LA FUMIGACIÓN
+  ;; Si los casos totales superan los 200 (brote confirmado) y no se ha fumigado:
+  if (sum [hum-I] of patches > 200) and (not fumigado?) [
+    if estrategia-automatica = "anillo" [ fumigar-anillo ]
+    if estrategia-automatica = "barrera" [ fumigar-barrera ]
+    set fumigado? true  ;; Marcamos que ya se aplicó la intervención
+  ]
   
   ;; Avanzamos el reloj 1 día
   tick
@@ -130,51 +136,91 @@ to dinamica-local
 end
 
 to movilidad-humana
-  ;; 1. Definimos qué porcentaje de la población viaja por día (tasa de movilidad)
-  let tasa-movilidad 0.25  ;; El 25% de las personas viajan a trabajar/estudiar
+  let tasa-movilidad 0.25  
   
   ask patches [
-    ;; Si hay personas sanas en este barrio, algunas viajarán
-    if hum-S > 0 [
+    ;; 1. Ahora viajan tanto los sanos como los infectados
+    let viajeros-S (hum-S * tasa-movilidad)
+    let viajeros-I (hum-I * tasa-movilidad)
+    
+    if (viajeros-S > 0) or (viajeros-I > 0) [
       
-      ;; 2. MODELO DE GRAVEDAD: Buscamos destinos cercanos con mayor atractivo que el barrio actual
-      let posibles-destinos patches in-radius 15 with [atractivo > [atractivo] of myself]
+      let posibles-destinos patches in-radius 2 with [atractivo > [atractivo] of myself]
       
       if any? posibles-destinos [
-        ;; Seleccionamos la zona más atractiva dentro del rango para visitarla
         let destino max-one-of posibles-destinos [atractivo]
         
-        ;; Calculamos cuántas personas viajan
-        let viajeros (hum-S * tasa-movilidad)
-        
-        ;; 3. CONTAGIO EN DESTINO: Analizamos la situación del lugar visitado
+        ;; --- SITUACIÓN EN EL DESTINO ---
+        let mosq-tot-destino ([mosq-S + mosq-E + mosq-I] of destino)
+        let mosq-S-destino [mosq-S] of destino
         let mosq-I-destino [mosq-I] of destino
-        let mosq-total-destino ([mosq-S + mosq-E + mosq-I] of destino)
+        let hum-tot-destino ([hum-S + hum-I + hum-R] of destino)
         
-        ;; Si en el centro hay mosquitos y están infectados, hay riesgo
-        if mosq-total-destino > 0 and mosq-I-destino > 0 [
-          let riesgo-destino (mosq-I-destino / mosq-total-destino)
-          let prob-transmision-m-h 0.75
+        if mosq-tot-destino > 0 [
           let tasa-picadura 0.5
+          let prob-transmision 0.75
           
-          ;; Calculamos cuántos viajeros fueron picados e infectados en el destino
-          let nuevos-infectados-viajeros (viajeros * tasa-picadura * riesgo-destino * prob-transmision-m-h)
+          ;; A. CONTAGIO "DE IDA": Viajeros infectados contagian a mosquitos del destino
+          ;; Calculamos qué peso tienen los viajeros infectados sobre el total de gente en el destino
+          let riesgo-viajeros (viajeros-I / (viajeros-S + viajeros-I + hum-tot-destino))
+          let nuevos-mosq-I (mosq-S-destino * tasa-picadura * riesgo-viajeros * prob-transmision)
           
-          ;; Evitamos errores matemáticos (no se pueden contagiar más de los que viajaron)
-          if nuevos-infectados-viajeros > viajeros [ set nuevos-infectados-viajeros viajeros ]
+          ;; B. CONTAGIO "DE VUELTA": Viajeros sanos son picados por mosquitos del destino
+          let riesgo-destino (mosq-I-destino / mosq-tot-destino)
+          let nuevos-infectados-viajeros (viajeros-S * tasa-picadura * riesgo-destino * prob-transmision)
+          if nuevos-infectados-viajeros > viajeros-S [ set nuevos-infectados-viajeros viajeros-S ]
           
-          ;; 4. RETORNO: Las personas vuelven a dormir a su barrio y actualizamos la población local
+          ;; C. ACTUALIZAMOS LOS MOSQUITOS DEL DESTINO REMOTAMENTE
+          ask destino [
+            set mosq-S (mosq-S - nuevos-mosq-I)
+            set mosq-I (mosq-I + nuevos-mosq-I)
+          ]
+          
+          ;; D. RETORNO A CASA: Los viajeros vuelven a su barrio y actualizamos su estado
           set hum-S (hum-S - nuevos-infectados-viajeros)
           set hum-I (hum-I + nuevos-infectados-viajeros)
         ]
       ]
     ]
   ]
+end
+
+to fumigar-anillo
+  ;; 1. Identificamos el epicentro actual (el parche con el brote más fuerte)
+  let epicentro max-one-of patches [hum-I]
+  
+  ;; 2. Le pedimos a ese parche que ejecute la fumigación a su alrededor
+  if epicentro != nobody [
+    ask epicentro [
+      ;; Seleccionamos los parches que están entre 6 y 8 celdas de distancia DEL EPICENTRO
+      ask patches in-radius 8 with [distance myself >= 6] [
+        set mosq-S 0 
+        set mosq-E 0 
+        set mosq-I 0
+        set pcolor yellow
+      ]
+    ]
+  ]
+end
+to fumigar-barrera
+  ;; Barreras verticales de grosor 3 a cada lado del centro
+  ask patches with [(pxcor >= 7 and pxcor <= 9) or (pxcor <= -7 and pxcor >= -9)] [
+    set mosq-S 0 set mosq-E 0 set mosq-I 0
+    set pcolor orange
+  ]
 end]]></code>
   <widgets>
-    <view x="368" wrappingAllowedX="true" y="10" frameRate="30.0" minPycor="-16" height="434" showTickCounter="true" patchSize="13.0" fontSize="10" wrappingAllowedY="true" width="434" tickCounterLabel="ticks" maxPycor="16" updateMode="0" maxPxcor="16" minPxcor="-16"></view>
+    <view x="368" wrappingAllowedX="false" y="10" frameRate="30.0" minPycor="-16" height="434" showTickCounter="true" patchSize="13.0" fontSize="10" wrappingAllowedY="false" width="434" tickCounterLabel="ticks" maxPycor="16" updateMode="0" maxPxcor="16" minPxcor="-16"></view>
     <button x="15" y="80" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="55">setup</button>
     <button x="70" y="80" height="40" disableUntilTicks="false" forever="true" kind="Observer" width="51">go</button>
+    <chooser x="10" y="220" height="60" variable="estrategia-automatica" current="1" width="250" display="estrategia-automatica">
+      <choice type="string" value="ninguna"></choice>
+      <choice type="string" value="anillo"></choice>
+      <choice type="string" value="barrera"></choice>
+    </chooser>
+    <button x="110" y="150" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="110">fumigar-barrera</button>
+    <button x="15" y="150" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="95">fumigar-anillo
+</button>
   </widgets>
   <info>## WHAT IS IT?
 

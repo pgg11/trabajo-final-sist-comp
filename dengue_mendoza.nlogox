@@ -1,15 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <model version="NetLogo 7.0.4" snapToGrid="true">
-  <code><![CDATA[globals [
+  <code><![CDATA[extensions [ gis ]
+globals [
   temperatura
   precipitacion
   dt
-  fumigado?   ;; NUEVO: Control para que la fumigación ocurra una sola vez
+  fumigado?   ;; Control para que la fumigación ocurra una sola vez
+  mapa-mendoza
+  parches-urbanos
+  temperaturas-mensuales ;; Lista para guardar el clima de todo el año
+  precipitaciones-mensuales
 ]
 
 patches-own [
   ;; Atractivo urbano (Ospina-Aguirre et al.)
-  atractivo         ;; Peso probabilístico de ser visitada
+  atractivo-zonal         ;; Peso probabilístico de ser visitada
+  poblacion-total ;; Caché estática de habitantes para acelerar la matemática
   
   ;; Compartimentos Humanos (Población en esa celda)
   hum-S             ;; Humanos Susceptibles (Sanos)
@@ -24,78 +30,127 @@ patches-own [
 
 to setup
   clear-all
-  set fumigado? false   ;; Reiniciamos el control de fumigación
+  ;; Inicializamos el control de fumigación como falso
+  set fumigado? false
   
-  ;; 1. Configurar el escenario climático (El Niño según Enet)
-  set temperatura 25    ;; Temperatura óptima constante (entre 20 y 30 grados)
-  set precipitacion 10  ;; Lluvia espacialmente uniforme
-  set dt 1              ;; Paso de tiempo de 1 día
+  ;; TEMPERATURAS MENSUALES DEL GRAN MENDOZA CON ANOMALÍA EL NIÑO (+2°C)
+  set temperaturas-mensuales [26.8 25.3 23 18.5 14.8 11.8 11 13.3 16.3 19.5 23 25.5]
+  set temperatura item 0 temperaturas-mensuales ;; Arrancamos en Enero
   
-  ;; 2. Configurar la matriz urbana y el modelo de gravedad
+  ;; PRECIPITACIONES MENSUALES EN MILÍMETROS CON ANOMALÍA EL NIÑO(Asumiendo un 40% más que en el promedio mensual)
+  set precipitaciones-mensuales [56 63 49 32 21 11 11 14 19 19 36 39]
+  set precipitacion item 0 precipitaciones-mensuales
+  
+  ;; 1. CARGAMOS LA MÁSCARA EN FORMATO PNG
+  import-pcolors "mascara-gran-mendoza.png"  ;; Asegurate de usar el PNG sin fondo que te pasé
+  
+  ;; 2. CONFIGURAMOS LAS CELDAS
   ask patches [
-    ;; Inicializamos poblaciones en 0 por ahora
-    set hum-S 100       ;; Asumimos 100 personas por celda para empezar
-    set hum-I 0
-    set hum-R 0
-    set mosq-S 500      ;; Capacidad inicial de mosquitos
-    set mosq-E 0
-    set mosq-I 0
-    
-    ;; Calculamos el "atractivo" según la distancia al centro (coordenada 0,0)
-    ;; Si la distancia es 0 (centro), tiene máxima atracción.
-    ;; Si la distancia es grande, el atractivo cae dramáticamente (gravedad).
-    let distancia-al-centro distancexy 0 0
-    
-    ifelse distancia-al-centro = 0 [
-      set atractivo 100  ;; El microcentro atrae muchísimo
-    ] [
-      ;; El atractivo disminuye al alejarnos (1 / distancia al cuadrado)
-      set atractivo (100 / (distancia-al-centro ^ 2))
+    ifelse pcolor >= 5 and pcolor <= 9.9 [
+      
+      ;; --- ZONA URBANA ACTIVA ---
+      set pcolor gray - 2   
+      set hum-S 100         
+      set mosq-S 500
+      set poblacion-total 100
+      
+      
+      
+      ;; LÓGICA DE ATRACTIVO ZONAL (Nodos de Gran Mendoza)
+      set atractivo-zonal 1 ;; Peso base para el resto de la mancha urbana
+      
+      ;; 1. Mendoza Capital (Mayor peso de atracción)
+      if distancexy -10 22 < 15 [ set atractivo-zonal 5 ]
+      
+      ;; 2. Godoy Cruz
+      if distancexy 0 -16 < 12 [ set atractivo-zonal 4 ]
+      
+      ;; 3. Villa Nueva (Guaymallén)
+      if distancexy 31 17 < 12 [ set atractivo-zonal 4 ]
+      
+      ;; 4. Las Heras
+      if distancexy 4 -51 < 10 [ set atractivo-zonal 3 ]
+      
+      ;; 5. Maipú
+      if distancexy 31 -31 < 10 [ set atractivo-zonal 2 ]
+      
+      ;; 6. Luján de Cuyo
+      if distancexy -30 -77 < 10 [ set atractivo-zonal 2 ]
+      
+    ] 
+    [
+      ;; --- ZONA NO POBLADA ---
+      set pcolor black      
+      set hum-S 0 
+      set hum-I 0 
+      set mosq-S 0 
+      set atractivo-zonal 0       
     ]
-    
-    ;; Pintamos las celdas para visualizar la ciudad
-    ;; Más blanco/brillante = más céntrico/atractivo. Más oscuro = residencial.
-    set pcolor scale-color blue atractivo 0 100
   ]
   
-  ;; 3. PACIENTE CERO ALEATORIO: Selecciona un parche al azar en toda la ciudad
-  ask one-of patches [
-    set hum-I 1
-    set hum-S 99
-    set pcolor red      
+  set parches-urbanos patches with [pcolor != black]
+  
+  ;; 3. PACIENTE CERO (Solo inicia en la zona urbana gris)
+  let parches-con-gente parches-urbanos with [hum-S > 0]
+  
+  if any? parches-con-gente [
+    ask one-of parches-con-gente [
+      set hum-I 1
+      set hum-S (hum-S - 1)
+      set pcolor red
+    ]
   ]
   
   reset-ticks
 end
 
 to go
-  ;; Condición de corte: si ya no hay humanos ni mosquitos infectados, frenamos.
-  if sum [hum-I] of patches = 0 and sum [mosq-I] of patches = 0 [ stop ]
+  ;; 1. RELOJ CLIMÁTICO
+  actualizar-clima  
   
-  ;; 1. Ejecutar las ecuaciones de Gutierrez en cada celda
-  ask patches [
-    dinamica-local
+  ;; 2. NÚCLEO ECO-EPIDEMIOLÓGICO (Gutiérrez aislado)
+  ask patches [ dinamica-local ]
+  
+  ;; INGRESO DE CASOS IMPORTADOS (Mantenemos para que el brote pueda iniciar en verano)
+  if temperatura > 16 [
+    if random-float 100 < 1 [
+      let destinos-posibles parches-urbanos with [hum-S > 0]
+      if any? destinos-posibles [
+        ask one-of destinos-posibles [
+          set hum-I (hum-I + 1)
+          set hum-S (hum-S - 1)
+          set pcolor red
+        ]
+      ]
+    ]
   ]
   
-  ;; Ejecutamos los viajes de la población
   movilidad-humana
   
-  ;; AUTOMATIZACIÓN DE LA FUMIGACIÓN
-  ;; Si los casos totales superan los 200 (brote confirmado) y no se ha fumigado:
-  if (sum [hum-I] of patches > 200) and (not fumigado?) [
+  if (sum [hum-I] of patches > 50) and (not fumigado?) [
     if estrategia-automatica = "anillo" [ fumigar-anillo ]
     if estrategia-automatica = "barrera" [ fumigar-barrera ]
-    set fumigado? true  ;; Marcamos que ya se aplicó la intervención
+    set fumigado? true  
   ]
   
-  ;; Avanzamos el reloj 1 día
   tick
 end
 
+to actualizar-clima
+  ;; 1 tick = 1 día. Calculamos el mes actual (de 0 a 11)
+  let dia-del-ano (ticks mod 365)
+  let mes floor (dia-del-ano / 30.41)
+  if mes > 11 [ set mes 11 ] 
+  
+  set temperatura item mes temperaturas-mensuales
+  set precipitacion item mes precipitaciones-mensuales
+end
+
 to dinamica-local
+  ;; PARÁMETROS CALIBRADOS PARA DESACELERAR EL BROTE LOCAL
   let tasa-picadura 0.5
-  let prob-transmision-h-m 0.75
-  let prob-transmision-m-h 0.75
+  let prob-transmision-h-m 0.4
+  let prob-transmision-m-h 0.4
   
   let pob-humana-total (hum-S + hum-I + hum-R)
   let pob-mosq-total (mosq-S + mosq-E + mosq-I)
@@ -109,14 +164,29 @@ to dinamica-local
   let proporcion-mosq-I (mosq-I / pob-mosq-total)
   let nuevos-hum-I (hum-S * tasa-picadura * proporcion-mosq-I * prob-transmision-m-h)
   
-  ;; 2. RECUPERACIÓN HUMANA (I -> R) y MORTALIDAD DEL MOSQUITO
+  ;; 2. RECUPERACIÓN HUMANA (I -> R)
   let tasa-recuperacion-humana (1 / 7)  ;; Tardan 7 días en curarse
   let nuevos-hum-R (hum-I * tasa-recuperacion-humana)
   
-  let tasa-mortalidad-mosq (1 / 15)     ;; El mosquito vive 15 días
+  ;; EFECTO CLIMÁTICO EN EL VECTOR (Gutiérrez et al.)
+  let factor-reproduccion 0
+  if temperatura > 12 [
+    set factor-reproduccion (temperatura - 12) / 13  
+  ]
+  if factor-reproduccion > 1 [ set factor-reproduccion 1 ]
+  
+  let tasa-mortalidad-mosq (1 / 15)     
+  if temperatura < 12 [ set tasa-mortalidad-mosq (1 / 7) ] 
+  
   let muertes-mosq-I (mosq-I * tasa-mortalidad-mosq)
   let muertes-mosq-S (mosq-S * tasa-mortalidad-mosq)
-  let nacimientos-mosq (muertes-mosq-I + muertes-mosq-S) ;; Nacen sanos para mantener población
+  
+  let capacidad-carga 100 + (precipitacion * 15)
+  
+  let nacimientos-mosq 0
+  if pob-mosq-total < capacidad-carga [
+    set nacimientos-mosq (capacidad-carga - pob-mosq-total) * 0.1 * factor-reproduccion
+  ]
   
   ;; 3. ACTUALIZAMOS POBLACIONES
   set mosq-S (mosq-S - nuevos-mosq-I - muertes-mosq-S + nacimientos-mosq)
@@ -126,57 +196,65 @@ to dinamica-local
   set hum-I (hum-I + nuevos-hum-I - nuevos-hum-R)
   set hum-R (hum-R + nuevos-hum-R)
   
-  ;; 4. VISUALIZACIÓN
-  let proporcion-I-actual (hum-I / pob-humana-total)
-  ifelse proporcion-I-actual > 0.05 [
-    set pcolor scale-color red proporcion-I-actual 1.0 0.05
-  ] [
-    set pcolor scale-color blue atractivo 0 100
+  ;; 4. VISUALIZACIÓN Y CORTE DE FLOTANTES
+  if hum-I < 0.5 [
+    set hum-I 0
+  ]
+  
+  ifelse hum-I > 0 [
+    set pcolor red
+  ] 
+  [
+    if pcolor = red [ set pcolor gray - 2 ]
   ]
 end
 
 to movilidad-humana
-  let tasa-movilidad 0.25  
+  let tasa-movilidad 0.3  
   
-  ask patches [
-    ;; 1. Ahora viajan tanto los sanos como los infectados
+  ask parches-urbanos [
     let viajeros-S (hum-S * tasa-movilidad)
-    let viajeros-I (hum-I * tasa-movilidad)
     
-    if (viajeros-S > 0) or (viajeros-I > 0) [
+    ;; Asumimos que el 40% de los infectados son asintomaticos y viajan
+    let viajeros-I (hum-I * 0.4) 
+    
+    if (viajeros-S > 0 or viajeros-I > 0) [
       
-      let posibles-destinos patches in-radius 2 with [atractivo > [atractivo] of myself]
+      let opciones n-of 5 parches-urbanos
+      let destino max-one-of opciones [
+        ifelse-value (distance myself = 0)
+          [ 0 ]
+          [ (poblacion-total * atractivo-zonal) / (distance myself ^ 2) ]
+      ]
       
-      if any? posibles-destinos [
-        let destino max-one-of posibles-destinos [atractivo]
+      if destino != nobody and destino != self [
         
-        ;; --- SITUACIÓN EN EL DESTINO ---
         let mosq-tot-destino ([mosq-S + mosq-E + mosq-I] of destino)
-        let mosq-S-destino [mosq-S] of destino
-        let mosq-I-destino [mosq-I] of destino
-        let hum-tot-destino ([hum-S + hum-I + hum-R] of destino)
         
         if mosq-tot-destino > 0 [
-          let tasa-picadura 0.5
-          let prob-transmision 0.75
           
-          ;; A. CONTAGIO "DE IDA": Viajeros infectados contagian a mosquitos del destino
-          ;; Calculamos qué peso tienen los viajeros infectados sobre el total de gente en el destino
-          let riesgo-viajeros (viajeros-I / (viajeros-S + viajeros-I + hum-tot-destino))
-          let nuevos-mosq-I (mosq-S-destino * tasa-picadura * riesgo-viajeros * prob-transmision)
+          ;; Tasas reducidas para reflejar la vía pública u oficinas
+          let tasa-picadura-viaje 0.1      
+          let prob-transmision 0.4   
           
-          ;; B. CONTAGIO "DE VUELTA": Viajeros sanos son picados por mosquitos del destino
-          let riesgo-destino (mosq-I-destino / mosq-tot-destino)
-          let nuevos-infectados-viajeros (viajeros-S * tasa-picadura * riesgo-destino * prob-transmision)
+          ;; 1. VIAJEROS SANOS SE INFECTAN EN EL DESTINO
+          let riesgo-destino ([mosq-I] of destino / mosq-tot-destino)
+          let nuevos-infectados-viajeros (viajeros-S * tasa-picadura-viaje * riesgo-destino * prob-transmision)
           if nuevos-infectados-viajeros > viajeros-S [ set nuevos-infectados-viajeros viajeros-S ]
           
-          ;; C. ACTUALIZAMOS LOS MOSQUITOS DEL DESTINO REMOTAMENTE
+          ;; 2. VIAJEROS INFECTADOS CONTAGIAN A LOS MOSQUITOS DEL DESTINO
+          let pob-temporal-destino ([poblacion-total] of destino + viajeros-S + viajeros-I)
+          let proporcion-viajeros-I (viajeros-I / pob-temporal-destino)
+          
           ask destino [
-            set mosq-S (mosq-S - nuevos-mosq-I)
-            set mosq-I (mosq-I + nuevos-mosq-I)
+            let nuevos-mosq-I-destino (mosq-S * tasa-picadura-viaje * proporcion-viajeros-I * prob-transmision)
+            if nuevos-mosq-I-destino > mosq-S [ set nuevos-mosq-I-destino mosq-S ]
+            
+            set mosq-S (mosq-S - nuevos-mosq-I-destino)
+            set mosq-I (mosq-I + nuevos-mosq-I-destino)
           ]
           
-          ;; D. RETORNO A CASA: Los viajeros vuelven a su barrio y actualizamos su estado
+          ;; 3. REGRESO A CASA (Actualizamos la celda de origen)
           set hum-S (hum-S - nuevos-infectados-viajeros)
           set hum-I (hum-I + nuevos-infectados-viajeros)
         ]
@@ -186,34 +264,51 @@ to movilidad-humana
 end
 
 to fumigar-anillo
-  ;; 1. Identificamos el epicentro actual (el parche con el brote más fuerte)
   let epicentro max-one-of patches [hum-I]
-  
-  ;; 2. Le pedimos a ese parche que ejecute la fumigación a su alrededor
   if epicentro != nobody [
     ask epicentro [
-      ;; Seleccionamos los parches que están entre 6 y 8 celdas de distancia DEL EPICENTRO
-      ask patches in-radius 8 with [distance myself >= 6] [
-        set mosq-S 0 
-        set mosq-E 0 
-        set mosq-I 0
+      ;; El anillo ahora tiene 6 celdas de grosor (24 a 30).
+      ;; Como el radio de viaje es 4, es matemáticamente imposible saltarlo.
+      ask patches in-radius 30 with [distance myself >= 24 and pcolor != black] [
+        set mosq-S 0 set mosq-E 0 set mosq-I 0
         set pcolor yellow
       ]
     ]
   ]
 end
+
 to fumigar-barrera
-  ;; Barreras verticales de grosor 3 a cada lado del centro
-  ask patches with [(pxcor >= 7 and pxcor <= 9) or (pxcor <= -7 and pxcor >= -9)] [
-    set mosq-S 0 set mosq-E 0 set mosq-I 0
-    set pcolor orange
+  let epicentro max-one-of patches [hum-I]
+  if epicentro != nobody [
+    let ex [pxcor] of epicentro
+    let ey [pycor] of epicentro
+    
+    ;; ¿El brote se aleja más hacia el Norte/Sur o hacia el Este/Oeste?
+    ifelse abs ey > abs ex [
+      ;; El brote es marcadamente vertical (ej. Las Heras o Luján). 
+      ;; Ponemos una barrera HORIZONTAL un poco antes del centro de la ciudad (ey * 0.6)
+      let corte (ey * 0.6)
+      ask patches with [pycor >= corte - 2 and pycor <= corte + 2 and pcolor != black] [
+        set mosq-S 0 set mosq-E 0 set mosq-I 0
+        set pcolor orange
+      ]
+    ]
+    [
+      ;; El brote es marcadamente horizontal (ej. Guaymallén profundo).
+      ;; Ponemos una barrera VERTICAL.
+      let corte (ex * 0.6)
+      ask patches with [pxcor >= corte - 2 and pxcor <= corte + 2 and pcolor != black] [
+        set mosq-S 0 set mosq-E 0 set mosq-I 0
+        set pcolor orange
+      ]
+    ]
   ]
 end]]></code>
   <widgets>
-    <view x="368" wrappingAllowedX="false" y="10" frameRate="30.0" minPycor="-16" height="434" showTickCounter="true" patchSize="13.0" fontSize="10" wrappingAllowedY="false" width="434" tickCounterLabel="ticks" maxPycor="16" updateMode="0" maxPxcor="16" minPxcor="-16"></view>
+    <view x="370" wrappingAllowedX="false" y="5" frameRate="30.0" minPycor="-125" height="425" showTickCounter="true" patchSize="1.68" fontSize="10" wrappingAllowedY="false" width="425" tickCounterLabel="ticks" maxPycor="125" updateMode="0" maxPxcor="125" minPxcor="-125"></view>
     <button x="15" y="80" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="55">setup</button>
-    <button x="70" y="80" height="40" disableUntilTicks="false" forever="true" kind="Observer" width="51">go</button>
-    <chooser x="10" y="220" height="60" variable="estrategia-automatica" current="1" width="250" display="estrategia-automatica">
+    <button x="70" y="80" height="40" disableUntilTicks="false" forever="true" kind="Observer" width="55">go</button>
+    <chooser x="10" y="220" height="60" variable="estrategia-automatica" current="2" width="250" display="estrategia-automatica">
       <choice type="string" value="ninguna"></choice>
       <choice type="string" value="anillo"></choice>
       <choice type="string" value="barrera"></choice>
@@ -221,6 +316,18 @@ end]]></code>
     <button x="110" y="150" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="110">fumigar-barrera</button>
     <button x="15" y="150" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="95">fumigar-anillo
 </button>
+    <plot x="815" autoPlotX="true" yMax="200.0" autoPlotY="true" yAxis="Población infectada" y="5" xMin="0.0" height="430" legend="false" xMax="365.0" yMin="0.0" width="530" xAxis="Días(ticks)" display="Curva epidémica diaria">
+      <setup></setup>
+      <update></update>
+      <pen interval="1.0" mode="0" display="default" color="-2674135" legend="true">
+        <setup></setup>
+        <update>plot sum [hum-I] of patches</update>
+      </pen>
+      <pen interval="1.0" mode="0" display="pen-1" color="-13840069" legend="true">
+        <setup></setup>
+        <update>plot sum [mosq-I] of patches</update>
+      </pen>
+    </plot>
   </widgets>
   <info>## WHAT IS IT?
 
@@ -1092,4 +1199,45 @@ end]]></code>
     </shape>
   </linkShapes>
   <previewCommands>setup repeat 75 [ go ]</previewCommands>
+  <experiments>
+    <experiment name="Base-30-runs" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="true" timeLimit="365">
+      <setup>setup</setup>
+      <go>go</go>
+      <metrics>
+        <metric>sum [hum-I] of patches</metric>
+        <metric>sum [mosq-I] of patches</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="estrategia-automatica">
+          <value value="&quot;ninguna&quot;"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="Anillo-30-runs" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="true" timeLimit="365">
+      <setup>setup</setup>
+      <go>go</go>
+      <metrics>
+        <metric>sum [hum-I] of patches</metric>
+        <metric>sum [mosq-I] of patches</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="estrategia-automatica">
+          <value value="&quot;anillo&quot;"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="Barrera-30-runs" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="true" timeLimit="365">
+      <setup>setup</setup>
+      <go>go</go>
+      <metrics>
+        <metric>sum [hum-I] of patches</metric>
+        <metric>sum [mosq-I] of patches</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="estrategia-automatica">
+          <value value="&quot;barrera&quot;"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+  </experiments>
 </model>

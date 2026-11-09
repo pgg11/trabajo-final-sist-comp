@@ -1,39 +1,54 @@
-# Modelo de Propagación y Control Espacial del Dengue en el Gran Mendoza
+# Modelo de Autómata Celular para la Propagación Espacial del Dengue en el Gran Mendoza
 
-Este repositorio contiene el código fuente y las rutinas de simulación de un **autómata celular bidimensional** diseñado para modelar la dinámica espacial de propagación del dengue en el Gran Mendoza (Argentina) y evaluar la eficacia topológica de distintas estrategias de fumigación bajo escenarios de anomalías climáticas (El Niño).
+Este repositorio contiene el código fuente, los scripts de análisis y los datasets de simulación de un modelo estocástico basado en Autómatas Celulares (AC) diseñado para estudiar la percolación espacial del virus del dengue en el ejido urbano del Gran Mendoza, Argentina, bajo condiciones climáticas anómalas (fenómeno de El Niño).
 
-Proyecto desarrollado como Trabajo Final para la asignatura **Sistemas Complejos** (Licenciatura en Ciencias de la Computación, FING - UNCUYO).
+Este proyecto fue desarrollado como trabajo final para la asignatura **Sistemas Complejos** de la Licenciatura en Ciencias de la Computación (Universidad Nacional de Cuyo).
 
-## Bases Teóricas y Modelado Científico
+## Características Principales
 
-El simulador integra tres marcos teóricos principales de la literatura reciente:
+*   **Entorno Espacial Realista:** Utiliza una grilla base de 251x251 parches (escalable) sobre la cual se aplica una máscara espacial binaria para restringir la simulación estrictamente a la mancha urbana activa del Gran Mendoza.
+*   **Movilidad por Gravedad:** Implementa un algoritmo de ruteo pendular estocástico para la población asintomática, ponderando la distancia euclidiana y el atractivo zonal (nodos comerciales/educativos).
+*   **Dinámica Eco-Epidemiológica Local:** La capacidad de carga del vector (*Aedes aegypti*) está condicionada por variables meteorológicas locales (precipitaciones y temperatura), simulando el letargo invernal y el rebrote estival.
+*   **Evaluación de Estrategias Topológicas:** Incluye funciones de mitigación espacial para evaluar intervenciones de fumigación:
+    *   `Base`: Evolución natural del brote (sin intervención).
+    *   `Anillo`: Cerco perimetral concéntrico focalizado en casos índice.
+    *   `Barrera`: Bloqueo transversal de corredores de movilidad.
 
-1. **Motor Biológico (Dinámica Local):** 
-   Implementa el modelo eco-epidemiológico compartimental de *Gutierrez et al. (2022)*. Se asume una difusión espacial nula del vector ($D_V = 0$), limitando el radio de vuelo del *Aedes aegypti* a su propia celda. La evolución de la población (Infección cruzada, mortalidad del vector $\mu = 1/15$ y recuperación humana $\gamma = 1/7$) se resuelve en pasos discretos de $\Delta t = 1$ día.
-   
-2. **Modelo de Movilidad (Percolación Espacial):**
-   Dado que el mosquito es estático, el virus se esparce a través de la red humana. Se adaptó el enfoque de *Ospina-Aguirre et al. (2023)* utilizando un **Modelo de Gravedad**, donde las personas viajan diariamente desde zonas residenciales hacia nodos de alto "atractivo" (ej. microcentro), calculado mediante ponderación probabilística espacial ($A = \frac{100}{d^2}$).
-   
-3. **Estrés Climático (El Niño):**
-   Las simulaciones de producción están forzadas por las condiciones de la fase cálida de El Niño (temperatura constante entre 20°C y 30°C), que es el rango crítico que dispara los brotes epidémicos en Argentina, según lo determinado por *Enet et al. (2026)*.
+## Estructura del Repositorio
 
-## Herramientas y Requisitos
+```text
+├── dengue_mendoza.nlogox        # Código fuente principal del modelo en NetLogo
+├── graficos.py                 # Script de Python para procesamiento y visualización de datos
+├── mascara-gran-mendoza.png    # Máscara binaria topológica del ejido urbano
+├── /datasets                   # Directorio con salidas CSV de BehaviorSpace (n=50 corridas)
+│   ├── base-50-runs.csv
+│   ├── Anillo-50-runs.csv
+│   └── Barrera-50-runs.csv
+└── /img                        # Gráficos generados y capturas de percolación espacial
+```
 
-* **Entorno de Simulación:** NetLogo 7+.
+## Requisitos y Configuración
 
-## Uso del Simulador
+Para ejecutar y modificar este proyecto necesitas:
 
-1. Abrir el archivo `.nlogox` en NetLogo.
-2. Hacer clic en `setup` para inicializar el mapa de calor (atractivo urbano) y fijar el paciente cero (1 infectado) en el centro de máxima gravedad.
-3. Presionar `go` para iniciar el reloj temporal ($\Delta t = 1$ día).
-4. La interfaz pintará de rojo los parches donde la prevalencia de la infección humana supere el 5%, permitiendo visualizar la onda expansiva concéntrica del brote epidémico en la matriz.
+1.  **NetLogo:** Versión 7.0 o superior.
+2.  **Python:** Versión 3.10 o superior para el análisis de resultados.
+3.  **Dependencias de Python:**
+    ```bash
+    pip install numpy matplotlib
+    ```
 
-## Bitácora de Simulación y Comportamientos Emergentes
+## Uso y Ejecución
 
-Durante las pruebas en la topología de grilla abstracta, se implementaron las siguientes mejoras y se registraron los siguientes fenómenos:
+### 1. Simulación en NetLogo
+*   Abre el archivo `dengue_mendoza.nlogo` en NetLogo.
+*   Asegúrate de que la imagen `mascara-gran-mendoza.png` se encuentre en el mismo directorio.
+*   Desde la interfaz, presiona `Setup` para inicializar las poblaciones y cargar la topología.
+*   Usa el botón `Go` para ejecutar la simulación de forma continua, o utiliza la herramienta **BehaviorSpace** (`Tools > BehaviorSpace`) para realizar múltiples corridas de Montecarlo (recomendado $n \ge 50$ para estabilizar la varianza estocástica).
 
-1. **Topología Finita:** Se desactivó la topología de toroide ("world wrap") para confinar la simulación a un plano con límites definidos, evitando fugas dimensionales del patógeno.
-2. **Estocasticidad Inicial:** El paciente cero se ubica de forma aleatoria en la matriz, permitiendo evaluar el efecto de "succión" gravitacional desde la periferia hacia el nodo céntrico.
-3. **Movilidad Bidireccional:** El modelo permite el viaje de humanos susceptibles (S) e infectados (I), simulando el contagio en el destino (ida) y el transporte del virus hacia los barrios residenciales (retorno).
-4. **Automatización:** Se integró un disparador que despliega intervenciones de fumigación al superar un umbral crítico de prevalencia (ej. 200 casos), simulando la latencia de respuesta sanitaria.
-5. **Efecto Puente (Fuga Espacial):** Las simulaciones con "anillos preventivos amplios" demostraron que la fumigación aislada es ineficaz si se mantiene la movilidad. Los individuos que residen dentro de la barrera química actúan como vectores de relevo: viajan a la zona infectada, contraen el virus y lo exportan cruzando la zona tratada hacia parches susceptibles.
+### 2. Generación de Gráficos
+Una vez exportados los resultados desde BehaviorSpace en formato CSV (formato *spreadsheet*), ejecuta el analizador en Python para calcular las medias, desviaciones estándar poblacionales y renderizar los gráficos en escala logarítmica (aplicando conservación estricta de masa poblacional):
+
+```bash
+python3 graficos.py
+```

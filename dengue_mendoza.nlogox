@@ -42,7 +42,7 @@ to setup
   set precipitacion item 0 precipitaciones-mensuales
   
   ;; 1. CARGAMOS LA MÁSCARA EN FORMATO PNG
-  import-pcolors "mascara-gran-mendoza.png"  ;; Asegurate de usar el PNG sin fondo que te pasé
+  import-pcolors "mascara-gran-mendoza.png"
   
   ;; 2. CONFIGURAMOS LAS CELDAS
   ask patches [
@@ -56,7 +56,7 @@ to setup
       
       
       
-      ;; LÓGICA DE ATRACTIVO ZONAL (Nodos de Gran Mendoza)
+      ; ;; LÓGICA DE ATRACTIVO ZONAL (Nodos de Gran Mendoza)
       set atractivo-zonal 1 ;; Peso base para el resto de la mancha urbana
       
       ;; 1. Mendoza Capital (Mayor peso de atracción)
@@ -76,7 +76,6 @@ to setup
       
       ;; 6. Luján de Cuyo
       if distancexy -30 -77 < 10 [ set atractivo-zonal 2 ]
-      
     ] 
     [
       ;; --- ZONA NO POBLADA ---
@@ -267,8 +266,6 @@ to fumigar-anillo
   let epicentro max-one-of patches [hum-I]
   if epicentro != nobody [
     ask epicentro [
-      ;; El anillo ahora tiene 6 celdas de grosor (24 a 30).
-      ;; Como el radio de viaje es 4, es matemáticamente imposible saltarlo.
       ask patches in-radius 30 with [distance myself >= 24 and pcolor != black] [
         set mosq-S 0 set mosq-E 0 set mosq-I 0
         set pcolor yellow
@@ -303,12 +300,19 @@ to fumigar-barrera
       ]
     ]
   ]
+end
+
+to test-eficiencia
+  setup
+  reset-timer
+  repeat 365 [ go ]
+  print word "Tiempo de ejecución (segundos): " timer
 end]]></code>
   <widgets>
     <view x="370" wrappingAllowedX="false" y="5" frameRate="30.0" minPycor="-125" height="425" showTickCounter="true" patchSize="1.68" fontSize="10" wrappingAllowedY="false" width="425" tickCounterLabel="ticks" maxPycor="125" updateMode="0" maxPxcor="125" minPxcor="-125"></view>
     <button x="15" y="80" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="55">setup</button>
     <button x="70" y="80" height="40" disableUntilTicks="false" forever="true" kind="Observer" width="55">go</button>
-    <chooser x="10" y="220" height="60" variable="estrategia-automatica" current="2" width="250" display="estrategia-automatica">
+    <chooser x="10" y="220" height="60" variable="estrategia-automatica" current="0" width="250" display="estrategia-automatica">
       <choice type="string" value="ninguna"></choice>
       <choice type="string" value="anillo"></choice>
       <choice type="string" value="barrera"></choice>
@@ -326,6 +330,10 @@ end]]></code>
       <pen interval="1.0" mode="0" display="pen-1" color="-13840069" legend="true">
         <setup></setup>
         <update>plot sum [mosq-I] of patches</update>
+      </pen>
+      <pen interval="1.0" mode="0" display="pen-2" color="-7500403" legend="true">
+        <setup></setup>
+        <update>plot sum [hum-R] of patches</update>
       </pen>
     </plot>
   </widgets>
@@ -1200,12 +1208,13 @@ end]]></code>
   </linkShapes>
   <previewCommands>setup repeat 75 [ go ]</previewCommands>
   <experiments>
-    <experiment name="Base-30-runs" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="true" timeLimit="365">
+    <experiment name="Base-50-runs" repetitions="50" sequentialRunOrder="true" runMetricsEveryStep="true" timeLimit="365">
       <setup>setup</setup>
       <go>go</go>
       <metrics>
         <metric>sum [hum-I] of patches</metric>
         <metric>sum [mosq-I] of patches</metric>
+        <metric>sum [hum-R] of patches</metric>
       </metrics>
       <constants>
         <enumeratedValueSet variable="estrategia-automatica">
@@ -1213,12 +1222,13 @@ end]]></code>
         </enumeratedValueSet>
       </constants>
     </experiment>
-    <experiment name="Anillo-30-runs" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="true" timeLimit="365">
+    <experiment name="Anillo-50-runs" repetitions="50" sequentialRunOrder="true" runMetricsEveryStep="true" timeLimit="365">
       <setup>setup</setup>
       <go>go</go>
       <metrics>
         <metric>sum [hum-I] of patches</metric>
         <metric>sum [mosq-I] of patches</metric>
+        <metric>sum [hum-R] of patches</metric>
       </metrics>
       <constants>
         <enumeratedValueSet variable="estrategia-automatica">
@@ -1226,12 +1236,13 @@ end]]></code>
         </enumeratedValueSet>
       </constants>
     </experiment>
-    <experiment name="Barrera-30-runs" repetitions="30" sequentialRunOrder="true" runMetricsEveryStep="true" timeLimit="365">
+    <experiment name="Barrera-50-runs" repetitions="50" sequentialRunOrder="true" runMetricsEveryStep="true" timeLimit="365">
       <setup>setup</setup>
       <go>go</go>
       <metrics>
         <metric>sum [hum-I] of patches</metric>
         <metric>sum [mosq-I] of patches</metric>
+        <metric>sum [hum-R] of patches</metric>
       </metrics>
       <constants>
         <enumeratedValueSet variable="estrategia-automatica">

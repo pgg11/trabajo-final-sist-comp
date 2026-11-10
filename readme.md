@@ -23,7 +23,8 @@ Este proyecto fue desarrollado como trabajo final para la asignatura **Sistemas 
 ├── /datasets                   # Directorio con salidas CSV de BehaviorSpace (n=50 corridas)
 │   ├── base-50-runs.csv
 │   ├── Anillo-50-runs.csv
-│   └── Barrera-50-runs.csv
+|   ├── Barrera-50-runs.csv
+│   └── Aleatorio-50-runs.csv
 └── /img                        # Gráficos generados y capturas de percolación espacial
 ```
 

@@ -129,6 +129,7 @@ to go
   if (sum [hum-I] of patches > 50) and (not fumigado?) [
     if estrategia-automatica = "anillo" [ fumigar-anillo ]
     if estrategia-automatica = "barrera" [ fumigar-barrera ]
+    if estrategia-automatica = "aleatorio" [ fumigar-aleatorio ]
     set fumigado? true  
   ]
   
@@ -302,6 +303,29 @@ to fumigar-barrera
   ]
 end
 
+to fumigar-aleatorio
+  let epicentro max-one-of patches [hum-I]
+  let cantidad-parches-anillo 0
+  
+  if epicentro != nobody [
+    ;; 1. Simulamos el Anillo solo para CONTAR cuántos parches abarcaría en la vida real
+    ask epicentro [
+      set cantidad-parches-anillo count (patches in-radius 30 with [distance myself >= 24 and pcolor != black])
+    ]
+  ]
+  
+  ;; 2. Elegimos esa misma cantidad de parches urbanos totalmente al azar
+  if cantidad-parches-anillo > 0 [
+    ;; Usamos 'n-of' para seleccionar aleatoriamente la cantidad exacta
+    ask n-of cantidad-parches-anillo (patches with [pcolor != black]) [
+      set mosq-S 0 
+      set mosq-E 0 
+      set mosq-I 0
+      set pcolor yellow ;; Usamos el mismo color que el anillo para que se vea en la interfaz
+    ]
+  ]
+end
+
 to test-eficiencia
   setup
   reset-timer
@@ -316,6 +340,7 @@ end]]></code>
       <choice type="string" value="ninguna"></choice>
       <choice type="string" value="anillo"></choice>
       <choice type="string" value="barrera"></choice>
+      <choice type="string" value="aleatorio"></choice>
     </chooser>
     <button x="110" y="150" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="110">fumigar-barrera</button>
     <button x="15" y="150" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="95">fumigar-anillo
@@ -1247,6 +1272,20 @@ end]]></code>
       <constants>
         <enumeratedValueSet variable="estrategia-automatica">
           <value value="&quot;barrera&quot;"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="Aleatorio-50-runs" repetitions="50" sequentialRunOrder="true" runMetricsEveryStep="true" timeLimit="365">
+      <setup>setup</setup>
+      <go>go</go>
+      <metrics>
+        <metric>sum [hum-I] of patches</metric>
+        <metric>sum [mosq-I] of patches</metric>
+        <metric>sum [hum-R] of patches</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="estrategia-automatica">
+          <value value="&quot;aleatorio&quot;"></value>
         </enumeratedValueSet>
       </constants>
     </experiment>

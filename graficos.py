@@ -89,7 +89,7 @@ def generar_grafico_individual(i_mean, i_std, r_mean, s_mean, titulo, archivo_sa
     print(f"Generado: {ruta_guardado}")
 
 # 1. Cargar los datos desde la carpeta datasets/
-base_i, base_r = leer_datos_netlogo(os.path.join("datasets", "base-50-runs-limpio.csv"))
+base_i, base_r = leer_datos_netlogo(os.path.join("datasets", "base-50-runs.csv"))
 anillo_i, anillo_r = leer_datos_netlogo(os.path.join("datasets", "Anillo-50-runs.csv"))
 barrera_i, barrera_r = leer_datos_netlogo(os.path.join("datasets", "Barrera-50-runs.csv"))
 
@@ -159,5 +159,38 @@ generar_grafico_individual(anillo_i_mean, anillo_i_std, anillo_r_mean, anillo_s_
 
 generar_grafico_individual(barrera_i_mean, barrera_i_std, barrera_r_mean, barrera_s_mean,
                            'Escenario Barrera (50 Corridas)', 'grafico_barrera.png', '#ff7f0e', '#8b4500', '#98df8a')
+
+# Cargar los datos del nuevo escenario Aleatorio
+aleatorio_i, aleatorio_r = leer_datos_netlogo(os.path.join("datasets", "Aleatorio-50-runs.csv"))
+
+# Calcular medias y desviaciones estándar
+aleatorio_i_mean = np.mean(aleatorio_i, axis=1)
+aleatorio_i_std = np.std(aleatorio_i, axis=1)
+
+# Generar el gráfico comparativo: Anillo vs Aleatorio
+plt.figure(figsize=(10, 5))
+
+plt.plot(ticks, aleatorio_i_mean, label='Aleatorio (Media)', color='#9467bd')
+plt.fill_between(ticks, np.maximum(aleatorio_i_mean - aleatorio_i_std, 1), 
+                 aleatorio_i_mean + aleatorio_i_std, color='#9467bd', alpha=0.15)
+
+plt.plot(ticks, anillo_i_mean, label='Anillo (Media)', color='#1f77b4')
+plt.fill_between(ticks, np.maximum(anillo_i_mean - anillo_i_std, 1), 
+                 anillo_i_mean + anillo_i_std, color='#1f77b4', alpha=0.15)
+
+plt.yscale('log')
+plt.ylim(1, 2500000) 
+plt.xlim(left=0)
+
+plt.title('Contraste de Hipótesis: Anillo vs. Aleatorio (Área Constante)')
+plt.xlabel('Días (ticks)')
+plt.ylabel('Población Infectada (Escala Logarítmica)')
+plt.legend(loc='upper right')
+plt.grid(True, alpha=0.3, which="both", ls="--")
+plt.tight_layout()
+
+ruta_anillo_aleatorio = os.path.join('img', 'comparativa_anillo_aleatorio.png')
+plt.savefig(ruta_anillo_aleatorio, dpi=300)
+plt.close()
 
 print("Todos los gráficos fueron generados exitosamente en la carpeta img/")

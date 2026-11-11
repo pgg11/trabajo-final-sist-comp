@@ -115,12 +115,9 @@ barrera_s_mean = POBLACION_TOTAL - barrera_i_mean - barrera_r_mean
 ticks = np.arange(len(base_i_mean))
 
 # 3. Generar el gráfico comparativo general
-plt.figure(figsize=(12, 6))
+plt.figure(figsize=(8, 8))
 
-plt.plot(ticks, base_s_mean, label='Base (Susceptibles)', color='#2ca02c', linestyle=':')
-plt.plot(ticks, anillo_s_mean, label='Anillo (Susceptibles)', color='#006400', linestyle=':')
-plt.plot(ticks, barrera_s_mean, label='Barrera (Susceptibles)', color='#98df8a', linestyle=':')
-
+# === SOLO INFECTADOS ===
 plt.plot(ticks, base_i_mean, label='Base (Infectados)', color='#d62728')
 plt.fill_between(ticks, np.maximum(base_i_mean - base_i_std, 1), base_i_mean + base_i_std, color='#d62728', alpha=0.15)
 
@@ -130,45 +127,47 @@ plt.fill_between(ticks, np.maximum(anillo_i_mean - anillo_i_std, 1), anillo_i_me
 plt.plot(ticks, barrera_i_mean, label='Barrera (Infectados)', color='#ff7f0e')
 plt.fill_between(ticks, np.maximum(barrera_i_mean - barrera_i_std, 1), barrera_i_mean + barrera_i_std, color='#ff7f0e', alpha=0.15)
 
+# === SOLO RECUPERADOS ===
 plt.plot(ticks, base_r_mean, label='Base (Recuperados)', color='#8c564b', linestyle='--')
 plt.plot(ticks, anillo_r_mean, label='Anillo (Recuperados)', color='#000080', linestyle='--')
 plt.plot(ticks, barrera_r_mean, label='Barrera (Recuperados)', color='#8b4500', linestyle='--')
 
+# Configuración de escala y límites
 plt.yscale('log')
-plt.ylim(1, 2500000)
+plt.ylim(1, 10000) # Techo bajado a 1e4
 plt.xlim(left=0)
 
-plt.title('Comparación de Estrategias (50 Corridas)')
-plt.xlabel('Días (ticks)')
-plt.ylabel('Población Humana (Escala Logarítmica)')
-plt.legend(loc='center left', fontsize='small', ncol=3) # Corregida la posición para no tapar los datos
+# Títulos y fuentes más grandes para legibilidad
+plt.title('Comparación de Estrategias (50 Corridas)', fontsize=16)
+plt.xlabel('Días (ticks)', fontsize=14)
+plt.ylabel('Población Humana (Escala Logarítmica)', fontsize=14)
+plt.xticks(fontsize=12)
+plt.yticks(fontsize=12)
+
+# Leyenda sin los Susceptibles
+plt.legend(loc='upper left', fontsize=11, ncol=2) 
 plt.grid(True, alpha=0.3, which="both", ls="--")
 plt.tight_layout()
 
 ruta_comparativo = os.path.join('img', 'grafico_comparativo.png')
 plt.savefig(ruta_comparativo, dpi=300)
 plt.close()
-print(f"Generado: {ruta_comparativo}")
+
 
 # 4. Generar los gráficos individuales
 generar_grafico_individual(base_i_mean, base_i_std, base_r_mean, base_s_mean,
                            'Escenario Base (50 Corridas)', 'grafico_base.png', '#d62728', '#8c564b', '#2ca02c')
-
 generar_grafico_individual(anillo_i_mean, anillo_i_std, anillo_r_mean, anillo_s_mean,
                            'Escenario Anillo (50 Corridas)', 'grafico_anillo.png', '#1f77b4', '#000080', '#006400')
-
 generar_grafico_individual(barrera_i_mean, barrera_i_std, barrera_r_mean, barrera_s_mean,
                            'Escenario Barrera (50 Corridas)', 'grafico_barrera.png', '#ff7f0e', '#8b4500', '#98df8a')
 
-# Cargar los datos del nuevo escenario Aleatorio
-aleatorio_i, aleatorio_r = leer_datos_netlogo(os.path.join("datasets", "Aleatorio-50-runs.csv"))
 
-# Calcular medias y desviaciones estándar
+aleatorio_i, aleatorio_r = leer_datos_netlogo(os.path.join("datasets", "Aleatorio-50-runs.csv"))
 aleatorio_i_mean = np.mean(aleatorio_i, axis=1)
 aleatorio_i_std = np.std(aleatorio_i, axis=1)
 
-# Generar el gráfico comparativo: Anillo vs Aleatorio
-plt.figure(figsize=(10, 5))
+plt.figure(figsize=(8, 8)) # Ratio 1:1
 
 plt.plot(ticks, aleatorio_i_mean, label='Aleatorio (Media)', color='#9467bd')
 plt.fill_between(ticks, np.maximum(aleatorio_i_mean - aleatorio_i_std, 1), 
@@ -179,13 +178,15 @@ plt.fill_between(ticks, np.maximum(anillo_i_mean - anillo_i_std, 1),
                  anillo_i_mean + anillo_i_std, color='#1f77b4', alpha=0.15)
 
 plt.yscale('log')
-plt.ylim(1, 2500000) 
+plt.ylim(1, 10000) # Techo bajado a 1e4
 plt.xlim(left=0)
 
-plt.title('Contraste de Hipótesis: Anillo vs. Aleatorio (Área Constante)')
-plt.xlabel('Días (ticks)')
-plt.ylabel('Población Infectada (Escala Logarítmica)')
-plt.legend(loc='upper right')
+plt.title('Contraste de Hipótesis: Anillo vs. Aleatorio (Área Constante)', fontsize=16)
+plt.xlabel('Días (ticks)', fontsize=14)
+plt.ylabel('Población Infectada (Escala Logarítmica)', fontsize=14)
+plt.xticks(fontsize=12)
+plt.yticks(fontsize=12)
+plt.legend(loc='upper left', fontsize=12)
 plt.grid(True, alpha=0.3, which="both", ls="--")
 plt.tight_layout()
 
@@ -193,4 +194,4 @@ ruta_anillo_aleatorio = os.path.join('img', 'comparativa_anillo_aleatorio.png')
 plt.savefig(ruta_anillo_aleatorio, dpi=300)
 plt.close()
 
-print("Todos los gráficos fueron generados exitosamente en la carpeta img/")
+print("Gráficos generados exitosamente")
